@@ -1,0 +1,294 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String           @id @default(cuid())
+  email             String           @unique
+  password          String
+  role              UserRole
+  status            UserStatus       @default(PENDING)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  emailVerified     DateTime?
+  resetToken        String?          @unique
+  resetTokenExpiry  DateTime?
+  verificationToken String?          @unique
+  investorProfile   InvestorProfile?
+  smeProfile        SMEProfile?
+
+  @@index([email])
+}
+
+model SMEProfile {
+  id                         String                @id @default(cuid())
+  userId                     String                @unique
+  businessName               String
+  businessEmail              String
+  contactPhone               String
+  BusinessCategoryId         String
+  commencementDate           DateTime
+  representativeName         String
+  position                   String
+  representativeEmail        String?
+  representativePhone        String?
+  description                String?
+  employeeCount              Int?
+  annualRevenue              Float?
+  website                    String?
+  documentVerificationStatus VerificationStatus    @default(PENDING)
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  businessDocuments          BusinessDocument[]
+  financialDocuments         FinancialDocument[]
+  financialMetrics           FinancialMetrics[]
+  investorInteractions       InvestorInteraction[]
+  investments                Investment[]
+  BusinessCategory           BusinessCategory      @relation(fields: [BusinessCategoryId], references: [id])
+  user                       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([BusinessCategoryId])
+}
+
+model InvestorProfile {
+  id                  String                       @id @default(cuid())
+  userId              String                       @unique
+  companyName         String?
+  investorType        String
+  investmentRange     Json?
+  totalInvestments    Int                          @default(0)
+  portfolioSize       Float?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  preferredIndustries BusinessCategoryPreference[]
+  interactions        InvestorInteraction[]
+  investments         Investment[]
+  user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BusinessCategory {
+  id                  String                       @id @default(cuid())
+  name                String                       @unique
+  description         String?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  investorPreferences BusinessCategoryPreference[]
+  smeProfiles         SMEProfile[]
+}
+
+model BusinessCategoryPreference {
+  id                 String           @id @default(cuid())
+  investorId         String
+  BusinessCategoryId String
+  BusinessCategory   BusinessCategory @relation(fields: [BusinessCategoryId], references: [id], onDelete: Cascade)
+  investor           InvestorProfile  @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@unique([investorId, BusinessCategoryId])
+  @@index([investorId])
+  @@index([BusinessCategoryId])
+}
+
+model BusinessDocument {
+  id                 String             @id @default(cuid())
+  smeId              String
+  name               String
+  url                String
+  type               DocumentType
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  verifiedBy         String?
+  rejectionReason    String?
+  uploadedAt         DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  sme                SMEProfile         @relation(fields: [smeId], references: [id], onDelete: Cascade)
+
+  @@index([smeId])
+  @@index([type])
+  @@index([verificationStatus])
+}
+
+model FinancialDocument {
+  id               String                @id @default(cuid())
+  smeId            String
+  name             String
+  url              String
+  type             FinancialDocumentType
+  period           DateTime // The period this document covers
+  processingStatus ProcessingStatus      @default(PENDING)
+  processedAt      DateTime?
+  extractedData    Json? // Raw extracted data
+  uploadedAt       DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  sme              SMEProfile            @relation(fields: [smeId], references: [id], onDelete: Cascade)
+  financialMetrics FinancialMetrics[]
+
+  @@index([smeId])
+  @@index([type])
+  @@index([processingStatus])
+  @@index([period])
+}
+
+model FinancialMetrics {
+  id                  String   @id @default(cuid())
+  smeId               String
+  financialDocumentId String?
+  period              DateTime // Time period these metrics represent
+
+  // Core financial metrics
+  revenue           Float?
+  costOfGoodsSold   Float?
+  grossProfit       Float?
+  operatingExpenses Float?
+  operatingProfit   Float?
+  otherIncome       Float?
+  otherExpenses     Float?
+  interestExpense   Float?
+  taxExpense        Float?
+  netProfit         Float?
+  ebitda            Float?
+
+  // Growth rates and margins (percentages)
+  revenueGrowth         Float?
+  grossProfitMargin     Float?
+  operatingProfitMargin Float?
+  netProfitMargin       Float?
+
+  // Credit scoring - simplified approach
+  creditScore  Float? // Overall credit score (e.g., 300-850 range)
+  riskCategory RiskCategory? // Risk category derived from credit score
+
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  sme               SMEProfile         @relation(fields: [smeId], references: [id], onDelete: Cascade)
+  financialDocument FinancialDocument? @relation(fields: [financialDocumentId], references: [id])
+
+  @@index([smeId])
+  @@index([period])
+  @@index([financialDocumentId])
+  @@index([creditScore])
+  @@index([riskCategory])
+}
+
+model InvestorInteraction {
+  id              String          @id @default(cuid())
+  investorId      String
+  smeId           String
+  interactionType InteractionType
+  createdAt       DateTime        @default(now())
+  notes           String?
+  investor        InvestorProfile @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  sme             SMEProfile      @relation(fields: [smeId], references: [id], onDelete: Cascade)
+
+  @@index([investorId])
+  @@index([smeId])
+  @@index([interactionType])
+}
+
+model Investment {
+  id             String           @id @default(cuid())
+  investorId     String
+  smeId          String
+  amount         Float
+  equity         Float? // Percentage of equity acquired
+  investmentDate DateTime
+  exitDate       DateTime?
+  status         InvestmentStatus @default(ACTIVE)
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  investor       InvestorProfile  @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  sme            SMEProfile       @relation(fields: [smeId], references: [id], onDelete: Cascade)
+
+  @@index([investorId])
+  @@index([smeId])
+  @@index([status])
+}
+
+model SupportOption {
+  id        Int      @id @default(autoincrement())
+  title     String
+  iconType  String
+  link      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FeedbackSubmission {
+  id        Int      @id @default(autoincrement())
+  message   String
+  userId    Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum UserRole {
+  SME
+  INVESTOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  SUSPENDED
+}
+
+enum DocumentType {
+  BANK_STATEMENT
+  RRA_TAX_CLEARANCE
+  REGISTRATION_CERTIFICATE
+  KEY_PERSON_ID
+  PRACTICE_LICENSE
+  OTHER
+}
+
+enum FinancialDocumentType {
+  BANK_STATEMENT
+  INCOME_STATEMENT
+  BALANCE_SHEET
+  CASH_FLOW_STATEMENT
+  TAX_RETURN
+  OTHER
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum InteractionType {
+  VIEW
+  CONTACT
+  MEETING
+  DUE_DILIGENCE
+  OTHER
+}
+
+enum InvestmentStatus {
+  PENDING
+  ACTIVE
+  EXITED
+  WRITTEN_OFF
+}
+
+enum RiskCategory {
+  VERY_LOW
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
